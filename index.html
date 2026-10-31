@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7ec850">
+<title>云端小花园 · 植物养成 🌱</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #aee3f5 0%, #cfeef2 34%, #d9f3d0 62%, #b7e6a8 100%);
+    color: #2f4a2f; user-select: none; touch-action: manipulation;
+    position: relative; overflow: hidden;
+  }
+
+  /* 太阳和云 */
+  .sun { position: absolute; top: 5%; left: 6%; width: 62px; height: 62px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #fff6c8, #ffe066 55%, #ffd166);
+    box-shadow: 0 0 40px 12px rgba(255,224,102,.4); z-index: 1; animation: sunPulse 4s ease-in-out infinite; }
+  @keyframes sunPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  .cloud { position: absolute; background: #fff; border-radius: 40px; opacity: .9; z-index: 1; }
+  .cloud::before, .cloud::after { content: ""; position: absolute; background: #fff; border-radius: 50%; }
+  .cloud.c1 { width: 80px; height: 26px; top: 10%; right: 12%; }
+  .cloud.c1::before { width: 34px; height: 34px; top: -14px; left: 14px; }
+  .cloud.c1::after { width: 24px; height: 24px; top: -10px; right: 12px; }
+  .cloud.c2 { width: 64px; height: 22px; top: 24%; left: 8%; }
+  .cloud.c2::before { width: 28px; height: 28px; top: -12px; left: 10px; }
+  .cloud.c2::after { width: 20px; height: 20px; top: -8px; right: 10px; }
+
+  /* 主界面 */
+  .app { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; padding: 0 18px; }
+
+  .header { text-align: center; padding-top: calc(16px + env(safe-area-inset-top)); }
+  .header h1 { font-size: clamp(22px, 6vw, 34px); letter-spacing: 2px; color: #2f6b2f; }
+  .header .sub { font-size: 13px; color: #5f8a5f; margin-top: 4px; }
+
+  /* 植物卡片 */
+  .stage-badge {
+    margin-top: 10px; display: inline-block; padding: 5px 16px; border-radius: 999px;
+    background: rgba(255,255,255,.7); border: 1px solid rgba(80,160,80,.4);
+    font-size: 14px; font-weight: 700; color: #2f7d3f; box-shadow: 0 3px 10px rgba(0,0,0,.06);
+  }
+
+  .pot-area { position: relative; margin-top: 4px; width: min(240px, 62vw); }
+  #plantSvg { width: 100%; height: auto; display: block; transform-origin: bottom center; transition: filter .5s ease; }
+  #plantSvg.sick { filter: sepia(.5) saturate(.55) brightness(.94); }
+  #plantSvg.wilt { filter: sepia(.6) saturate(.45) brightness(.92); animation: wiltSway 4s ease-in-out infinite; }
+  #plantSvg.burn { filter: sepia(.4) saturate(.65) hue-rotate(-12deg); }
+  @keyframes wiltSway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  .sway { animation: sway 5s ease-in-out infinite; transform-origin: bottom center; }
+  @keyframes sway { 0%,100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+
+  .status-text { margin-top: 4px; text-align: center; font-size: 15px; font-weight: 700; min-height: 22px; color: #2f7d3f; }
+  .status-text.warn { color: #d9822b; }
+  .status-text.bad { color: #c0392b; }
+
+  /* 属性条 */
+  .stats { width: min(320px, 88vw); margin-top: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .stat-row { display: flex; align-items: center; gap: 10px; }
+  .stat-label { width: 44px; font-size: 13px; font-weight: 700; color: #3d5c3d; white-space: nowrap; }
+  .bar { flex: 1; height: 14px; background: rgba(0,0,0,.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .bar .fill { height: 100%; width: 0%; border-radius: 999px; transition: width .4s ease; }
+  .bar.water .fill { background: linear-gradient(90deg, #4facfe, #1e90ff); }
+  .bar.food .fill { background: linear-gradient(90deg, #ffb347, #ff8c00); }
+  .bar.grow .fill { background: linear-gradient(90deg, #7ed957, #43a047); }
+  .stat-val { width: 34px; font-size: 12px; font-weight: 700; text-align: right; color: #4a5f4a; }
+
+  .day-line { margin-top: 4px; font-size: 13px; color: #5f8a5f; }
+  .day-line b { color: #2f7d3f; font-size: 15px; }
+
+  /* 操作按钮 */
+  .actions { margin-top: 14px; display: flex; gap: 14px; width: min(320px, 88vw); }
+  .act-btn {
+    flex: 1; cursor: pointer; border: none; border-radius: 18px; padding: 15px 8px;
+    font-size: 17px; font-weight: 800; color: #fff; letter-spacing: 1px;
+    box-shadow: 0 8px 22px rgba(0,0,0,.18), inset 0 -3px 0 rgba(0,0,0,.14);
+    transition: transform .12s ease, box-shadow .2s ease;
+  }
+  .act-btn:active { transform: scale(.94); }
+  .act-btn.water { background: linear-gradient(135deg, #5ec6ff, #1e90ff); }
+  .act-btn.food { background: linear-gradient(135deg, #ffc05c, #ff8c00); }
+  .act-btn .ic { display: block; font-size: 24px; }
+
+  /* 特效层 */
+  .fx { position: absolute; inset: 0; pointer-events: none; z-index: 6; overflow: hidden; }
+  .drop { position: absolute; font-size: 18px; will-change: transform, opacity; }
+
+  .reset { margin-top: 12px; font-size: 12px; color: #7a957a; cursor: pointer; text-decoration: underline; }
+
+  /* 首次欢迎提示 */
+  .welcome {
+    position: absolute; inset: 0; z-index: 20; background: rgba(20,40,20,.5);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .welcome.hidden { display: none; }
+  .welcome-card {
+    background: #fffdf5; border-radius: 22px; padding: 26px 24px; max-width: 320px; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  }
+  .welcome-card h2 { color: #2f6b2f; font-size: 22px; }
+  .welcome-card p { color: #5a705a; font-size: 14px; line-height: 1.9; margin: 12px 0 18px; text-align: left; }
+  .welcome-card button {
+    cursor: pointer; border: none; background: linear-gradient(135deg, #7ed957, #43a047); color: #fff;
+    font-size: 16px; font-weight: 800; padding: 13px 44px; border-radius: 999px;
+    box-shadow: 0 8px 20px rgba(67,160,71,.4);
+  }
+</style>
+</head>
+<body>
+  <div class="sun"></div>
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+
+  <div class="app">
+    <div class="header">
+      <h1>🌱 云端小花园</h1>
+      <div class="sub">浇水施肥，看着它一天天长大</div>
+    </div>
+
+    <div class="stage-badge" id="stageBadge">种子</div>
+
+    <div class="pot-area">
+      <div class="sway" id="swayWrap">
+        <svg id="plantSvg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </div>
+
+    <div class="status-text" id="statusText">正在发芽…</div>
+
+    <div class="stats">
+      <div class="stat-row">
+        <span class="stat-label">💧 水分</span>
+        <div class="bar water"><div class="fill" id="waterFill"></div></div>
+        <span class="stat-val" id="waterVal">0%</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">🌰 养分</span>
+        <div class="bar food"><div class="fill" id="foodFill"></div></div>
+        <span class="stat-val" id="foodVal">0%</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">🌿 成长</span>
+        <div class="bar grow"><div class="fill" id="growFill"></div></div>
+        <span class="stat-val" id="growVal">0%</span>
+      </div>
+    </div>
+
+    <div class="day-line">已陪伴 <b id="dayVal">1</b> 天</div>
+
+    <div class="actions">
+      <button class="act-btn water" id="waterBtn"><span class="ic">💧</span>浇水</button>
+      <button class="act-btn food" id="foodBtn"><span class="ic">🌰</span>施肥</button>
+    </div>
+
+    <div class="reset" id="resetBtn">重新种一株</div>
+  </div>
+
+  <div class="fx" id="fx"></div>
+
+  <div class="welcome" id="welcome">
+    <div class="welcome-card">
+      <h2>🎉 领养一株小植物</h2>
+      <p>
+        ・点「💧 浇水」补充水分<br>
+        ・点「🌰 施肥」补充养分<br>
+        ・水分养分合适，它就会慢慢长大<br>
+        ・离开后时间也会继续走，记得回来照顾它<br>
+        ・缺水会枯萎，水太多会烂根，施肥过量会烧苗哦
+      </p>
+      <button id="welcomeBtn">开始种植</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var STORE_KEY = 'plant_state_v1';
+
+  var STAGE_NAMES = ['种子', '发芽', '幼苗', '成长', '花苞', '开花'];
+  var STAGE_AT = [0, 15, 35, 55, 75, 90];
+
+  // 每秒变化速率
+  var WATER_DECAY = 0.15;
+  var FOOD_DECAY = 0.12;
+  var GROW_RATE = 0.05;
+  var OFFLINE_CAP = 12 * 3600; // 离线最多补 12 小时
+
+  var state = load();
+  applyTick((Date.now() - state.last) / 1000);
+  state.last = Date.now();
+  save();
+
+  var plantSvg = document.getElementById('plantSvg');
+  var stageBadge = document.getElementById('stageBadge');
+  var statusText = document.getElementById('statusText');
+  var waterFill = document.getElementById('waterFill');
+  var foodFill = document.getElementById('foodFill');
+  var growFill = document.getElementById('growFill');
+  var waterVal = document.getElementById('waterVal');
+  var foodVal = document.getElementById('foodVal');
+  var growVal = document.getElementById('growVal');
+  var dayVal = document.getElementById('dayVal');
+  var fx = document.getElementById('fx');
+
+  var lastStage = -1, lastSick = '';
+
+  // ---------- 存取 ----------
+  function load() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {}
+    if (d && typeof d.water === 'number' && typeof d.growth === 'number') {
+      return d;
+    }
+    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now() };
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---------- 逻辑 ----------
+  function ideal() {
+    return state.water >= 20 && state.water <= 85 && state.nutrients >= 12 && state.nutrients <= 80;
+  }
+
+  function applyTick(sec) {
+    if (!sec || sec < 0) return;
+    sec = Math.min(sec, OFFLINE_CAP);
+    state.water = Math.max(0, state.water - sec * WATER_DECAY);
+    state.nutrients = Math.max(0, state.nutrients - sec * FOOD_DECAY);
+    if (ideal()) {
+      state.growth = Math.min(100, state.growth + sec * GROW_RATE);
+    }
+    state.seconds += sec;
+  }
+
+  function stageOf(g) {
+    for (var i = STAGE_AT.length - 1; i >= 0; i--) {
+      if (g >= STAGE_AT[i]) return i;
+    }
+    return 0;
+  }
+
+  function health() {
+    if (state.water < 8) return { cls: 'wilt', txt: '缺水枯萎了，快浇水！', level: 'bad' };
+    if (state.water > 92) return { cls: 'sick', txt: '水太多，快烂根了！', level: 'warn' };
+    if (state.nutrients > 88) return { cls: 'burn', txt: '肥料过量，烧苗了！', level: 'warn' };
+    if (state.nutrients < 5) return { cls: 'sick', txt: '缺养分，施点肥吧', level: 'warn' };
+    if (state.water < 20) return { cls: 'sick', txt: '有点口渴了，浇点水', level: 'warn' };
+    if (state.growth >= 100) return { cls: '', txt: '已经长成啦，漂亮的花朵 ✨', level: 'ok' };
+    if (ideal()) return { cls: '', txt: '茁壮成长中 ✨', level: 'ok' };
+    return { cls: '', txt: '慢慢生长中', level: 'ok' };
+  }
+
+  function render() {
+    var g = state.growth;
+    var stage = stageOf(g);
+    var h = health();
+
+    // 阶段名
+    stageBadge.textContent = STAGE_NAMES[stage];
+
+    // 状态文字
+    statusText.textContent = h.txt;
+    statusText.className = 'status-text' + (h.level === 'warn' ? ' warn' : h.level === 'bad' ? ' bad' : '');
+
+    // 植物图
+    if (stage !== lastStage || h.cls !== lastSick) {
+      plantSvg.innerHTML = potSVG() + plantPart(stage);
+      lastStage = stage;
+      lastSick = h.cls;
+    }
+    plantSvg.setAttribute('class', h.cls);
+
+    // 进度条
+    waterFill.style.width = state.water + '%';
+    foodFill.style.width = state.nutrients + '%';
+    growFill.style.width = g + '%';
+    waterVal.textContent = Math.round(state.water) + '%';
+    foodVal.textContent = Math.round(state.nutrients) + '%';
+    growVal.textContent = Math.round(g) + '%';
+    dayVal.textContent = 1 + Math.floor(state.seconds / 120);
+  }
+
+  // ---------- SVG 绘制 ----------
+  var STEM = '#3f7d3f', LEAF = '#57b363', LEAF2 = '#3a8f4a', BUD = '#ff8fb3', PETAL = '#ff7aa8', CENTER = '#ffd166';
+
+  function leaf(cx, cy, rx, ry, ang, color) {
+    return '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="' + color + '" transform="rotate(' + ang + ' ' + cx + ' ' + cy + ')"/>';
+  }
+  function potSVG() {
+    return '<path d="M62 200 L138 200 L130 236 L70 236 Z" fill="#c8704a"/>' +
+      '<rect x="56" y="188" width="88" height="12" rx="5" fill="#b55f3c"/>' +
+      '<ellipse cx="100" cy="192" rx="38" ry="8" fill="#4a3220"/>';
+  }
+  function plantPart(s) {
+    var p = '';
+    if (s === 0) {
+      return '<ellipse cx="100" cy="188" rx="10" ry="6" fill="#6b4a2a"/>' +
+             '<circle cx="100" cy="183" r="4" fill="#8a6d3b"/>';
+    }
+    if (s === 1) {
+      p += '<path d="M100 190 C100 180 100 172 100 162" stroke="' + STEM + '" stroke-width="4" fill="none" stroke-linecap="round"/>';
+      p += leaf(86, 168, 11, 6, -28, LEAF);
+      p += leaf(114, 168, 11, 6, 28, LEAF);
+      return p;
+    }
+    if (s === 2) {
+      p += '<path d="M100 190 C100 176 100 162 100 138" stroke="' + STEM + '" stroke-width="4" fill="none" stroke-linecap="round"/>';
+      p += leaf(84, 166, 13, 7, -30, LEAF);
+      p += leaf(116, 166, 13, 7, 30, LEAF);
+      p += leaf(82, 146, 12, 6, -32, LEAF2);
+      p += leaf(118, 146, 12, 6, 32, LEAF2);
+      return p;
+    }
+    // s >= 3：主茎 + 侧枝 + 叶片
+    p += '<path d="M100 190 C100 174 100 156 100 112" stroke="' + STEM + '" stroke-width="4" fill="none" stroke-linecap="round"/>';
+    p += '<path d="M100 150 C88 143 76 139 68 133" stroke="' + STEM + '" stroke-width="3" fill="none" stroke-linecap="round"/>';
+    p += '<path d="M100 138 C113 131 125 127 133 121" stroke="' + STEM + '" stroke-width="3" fill="none" stroke-linecap="round"/>';
+    p += leaf(84, 158, 13, 7, -30, LEAF);
+    p += leaf(116, 158, 13, 7, 30, LEAF);
+    p += leaf(70, 134, 12, 6, -34, LEAF2);
+    p += leaf(131, 121, 12, 6, 34, LEAF2);
+    p += leaf(88, 116, 12, 6, -28, LEAF);
+    p += leaf(112, 116, 12, 6, 28, LEAF);
+    if (s === 4) {
+      p += '<path d="M100 112 C100 106 100 102 100 98" stroke="' + STEM + '" stroke-width="3" fill="none" stroke-linecap="round"/>';
+      p += '<circle cx="100" cy="90" r="9" fill="' + BUD + '"/>';
+      p += '<path d="M92 92 Q96 99 100 99 Q104 99 108 92" fill="' + STEM + '"/>';
+    }
+    if (s === 5) {
+      for (var i = 0; i < 6; i++) {
+        var a = i * 60;
+        var rad = a * Math.PI / 180;
+        var px = 100 + Math.cos(rad) * 14;
+        var py = 86 + Math.sin(rad) * 14;
+        p += leaf(px, py, 10, 7, a, PETAL);
+      }
+      p += '<circle cx="100" cy="86" r="7" fill="' + CENTER + '"/>';
+    }
+    return p;
+  }
+
+  // ---------- 特效 ----------
+  function rain(emoji, count) {
+    for (var i = 0; i < count; i++) {
+      (function () {
+        var d = document.createElement('div');
+        d.className = 'drop';
+        d.textContent = emoji;
+        d.style.left = (12 + Math.random() * 76) + '%';
+        d.style.top = '-5%';
+        d.style.fontSize = (14 + Math.random() * 10) + 'px';
+        fx.appendChild(d);
+        d.animate([
+          { transform: 'translateY(0)', opacity: 1 },
+          { transform: 'translateY(' + (window.innerHeight * 0.7) + 'px)', opacity: 0 }
+        ], { duration: 800 + Math.random() * 400, easing: 'ease-in' }).onfinish = function () { d.remove(); };
+        setTimeout(function () { d.remove(); }, 1300);
+      })();
+    }
+  }
+
+  // ---------- 交互 ----------
+  document.getElementById('waterBtn').addEventListener('click', function () {
+    state.water = Math.min(100, state.water + 22);
+    rain('💧', 7);
+    vibrate(15);
+    save(); render();
+  });
+  document.getElementById('foodBtn').addEventListener('click', function () {
+    state.nutrients = Math.min(100, state.nutrients + 18);
+    rain('🌰', 5);
+    vibrate(15);
+    save(); render();
+  });
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    if (confirm('确定要重新种一株吗？当前植物会被清空。')) {
+      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now() };
+      lastStage = -1; lastSick = '';
+      save(); render();
+    }
+  });
+  document.getElementById('welcomeBtn').addEventListener('click', function () {
+    document.getElementById('welcome').classList.add('hidden');
+  });
+
+  function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 15); } catch (e) {} }
+
+  // ---------- 主循环 ----------
+  setInterval(function () {
+    applyTick(1);
+    state.last = Date.now();
+    save();
+    render();
+  }, 1000);
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      state.last = Date.now(); save();
+    } else {
+      applyTick((Date.now() - state.last) / 1000);
+      state.last = Date.now(); save(); render();
+    }
+  });
+  window.addEventListener('beforeunload', function () { state.last = Date.now(); save(); });
+
+  render();
+})();
+</script>
+</body>
+</html>
