@@ -65,6 +65,21 @@
   .status-text.warn { color: #d9822b; }
   .status-text.bad { color: #c0392b; }
 
+  /* 随机事件提示 */
+  .event-banner {
+    position: absolute; left: 50%; top: 27%; transform: translate(-50%, -10px) scale(.85);
+    z-index: 12; opacity: 0; pointer-events: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 20px; border-radius: 16px; font-size: 15px; font-weight: 800;
+    box-shadow: 0 12px 32px rgba(0,0,0,.28); white-space: nowrap;
+    transition: opacity .25s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .event-banner.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  .event-banner.good { background: linear-gradient(135deg, #7ed957, #43a047); color: #fff; }
+  .event-banner.bad  { background: linear-gradient(135deg, #ff8a80, #e53935); color: #fff; }
+  .event-banner.info { background: linear-gradient(135deg, #64b5f6, #1e88e5); color: #fff; }
+  .event-banner .eb-ic { font-size: 20px; }
+
   /* 属性条 */
   .stats { width: min(320px, 88vw); margin-top: 10px; display: flex; flex-direction: column; gap: 9px; }
   .stat-row { display: flex; align-items: center; gap: 10px; }
@@ -172,6 +187,7 @@
   </div>
 
   <div class="fx" id="fx"></div>
+  <div class="event-banner" id="eventBanner"></div>
 
   <div class="welcome" id="welcome">
     <div class="welcome-card">
@@ -217,6 +233,7 @@
   var dayVal = document.getElementById('dayVal');
   var clock = document.getElementById('clock');
   var nameInput = document.getElementById('nameInput');
+  var eventBanner = document.getElementById('eventBanner');
   var fx = document.getElementById('fx');
 
   var lastStage = -1, lastSick = '';
@@ -399,6 +416,56 @@
     }
   }
 
+  // ---------- 随机事件 ----------
+  var EVENTS = [
+    { ic: '🌧️', txt: '下雨了，喝饱了水', w: 18, k: 'good' },
+    { ic: '☀️', txt: '阳光正好，舒服极了', g: 3, k: 'good' },
+    { ic: '🐝', txt: '小蜜蜂来授粉啦', g: 5, k: 'good' },
+    { ic: '🎁', txt: '邻居送来一袋肥料', f: 16, k: 'good' },
+    { ic: '🌈', txt: '雨后彩虹，心情大好', g: 2, k: 'good' },
+    { ic: '🕊️', txt: '小鸟带来一颗种子', g: 4, k: 'good' },
+    { ic: '💧', txt: '夜里凝结了露水', w: 9, k: 'good' },
+    { ic: '🌿', txt: '悄悄冒出了新芽', g: 3, k: 'good' },
+    { ic: '🌟', txt: '幸运降临！它飞快地长大', g: 10, k: 'good', wt: 0.25 },
+    { ic: '🐛', txt: '有虫子啃叶子！', g: -3, k: 'bad' },
+    { ic: '💨', txt: '大风把水吹干了', w: -12, k: 'bad' },
+    { ic: '🍂', txt: '落叶带走了养分', f: -8, k: 'bad' },
+    { ic: '🌡️', txt: '气温骤升，水分流失', w: -10, k: 'bad' },
+    { ic: '🕷️', txt: '蜘蛛结网挡住了阳光', g: -2, k: 'bad' },
+    { ic: '🐌', txt: '蜗牛啃掉几片叶子', g: -4, k: 'bad' },
+    { ic: '🔥', txt: '太晒了，土都干了', w: -15, k: 'bad' },
+    { ic: '🦋', txt: '一只蝴蝶飞过来看了看', k: 'info' }
+  ];
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  var eventTimer = null;
+  function showEvent(e) {
+    eventBanner.className = 'event-banner ' + (e.k || 'info');
+    eventBanner.innerHTML = '<span class="eb-ic">' + e.ic + '</span>' + e.txt;
+    void eventBanner.offsetWidth;
+    eventBanner.classList.add('show');
+    clearTimeout(eventTimer);
+    eventTimer = setTimeout(function () { eventBanner.classList.remove('show'); }, 3000);
+  }
+
+  function triggerRandomEvent() {
+    var total = 0, i;
+    for (i = 0; i < EVENTS.length; i++) total += (EVENTS[i].wt || 1);
+    var r = Math.random() * total, e = EVENTS[0];
+    for (i = 0; i < EVENTS.length; i++) {
+      r -= (EVENTS[i].wt || 1);
+      if (r <= 0) { e = EVENTS[i]; break; }
+    }
+    state.water = clamp(state.water + (e.w || 0), 0, 100);
+    state.nutrients = clamp(state.nutrients + (e.f || 0), 0, 100);
+    state.growth = clamp(state.growth + (e.g || 0), 0, 100);
+    save(); render();
+    showEvent(e);
+    try { if (navigator.vibrate) navigator.vibrate(e.k === 'bad' ? 45 : 18); } catch (err) {}
+    if (e.ic === '🌧️') rain('💧', 6);
+  }
+
   // ---------- 交互 ----------
   document.getElementById('waterBtn').addEventListener('click', function () {
     state.water = Math.min(100, state.water + 22);
@@ -439,6 +506,14 @@
     save();
     render();
   }, 1000);
+
+  // 随机事件：每 30 秒有 50% 概率发生
+  setInterval(function () {
+    if (document.hidden) return;
+    var w = document.getElementById('welcome');
+    if (!w.classList.contains('hidden')) return;
+    if (Math.random() < 0.5) triggerRandomEvent();
+  }, 30000);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
