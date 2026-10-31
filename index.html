@@ -45,6 +45,15 @@
   .name-input::placeholder { color: #8aaa8a; font-weight: 500; }
   .name-input:focus { border-color: #43a047; background: #fff; }
 
+  .pause-btn {
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 16px; z-index: 14;
+    background: rgba(255,255,255,.78); border: 1.5px solid rgba(80,160,80,.45);
+    color: #2f6b2f; font-size: 13px; font-weight: 800; padding: 8px 14px; border-radius: 999px;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    transition: background .2s ease, color .2s ease;
+  }
+  .pause-btn.paused { background: linear-gradient(135deg, #ffb347, #ff8c00); color: #fff; border-color: #ff8c00; }
+
   /* 植物卡片 */
   .stage-badge {
     margin-top: 10px; display: inline-block; padding: 5px 16px; border-radius: 999px;
@@ -144,6 +153,8 @@
       <div class="clock" id="clock">--</div>
     </div>
 
+    <button class="pause-btn" id="pauseBtn">⏸ 暂停</button>
+
     <div class="name-row">
       <input class="name-input" id="nameInput" type="text" maxlength="12" placeholder="🌿 给你的植物起个名字">
     </div>
@@ -210,14 +221,14 @@
   var STAGE_NAMES = ['种子', '发芽', '幼苗', '成长', '花苞', '开花'];
   var STAGE_AT = [0, 15, 35, 55, 75, 90];
 
-  // 每秒变化速率
-  var WATER_DECAY = 0.15;
-  var FOOD_DECAY = 0.12;
-  var GROW_RATE = 0.05;
-  var OFFLINE_CAP = 12 * 3600; // 离线最多补 12 小时
+  // 每秒变化速率（满值约 24 小时）
+  var WATER_DECAY = 100 / 86400;
+  var FOOD_DECAY = 100 / 86400;
+  var GROW_RATE = 100 / 86400;
+  var OFFLINE_CAP = 48 * 3600; // 离线最多补 48 小时
 
   var state = load();
-  applyTick((Date.now() - state.last) / 1000);
+  if (!state.paused) applyTick((Date.now() - state.last) / 1000);
   state.last = Date.now();
   save();
 
@@ -234,6 +245,7 @@
   var clock = document.getElementById('clock');
   var nameInput = document.getElementById('nameInput');
   var eventBanner = document.getElementById('eventBanner');
+  var pauseBtn = document.getElementById('pauseBtn');
   var fx = document.getElementById('fx');
 
   var lastStage = -1, lastSick = '';
@@ -245,9 +257,10 @@
     if (d && typeof d.water === 'number' && typeof d.growth === 'number') {
       if (d.plantedAt == null) d.plantedAt = Date.now();
       if (typeof d.name !== 'string') d.name = '';
+      if (typeof d.paused !== 'boolean') d.paused = false;
       return d;
     }
-    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now() };
+    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false };
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
@@ -315,9 +328,18 @@
     // 北京时间
     clock.textContent = '北京时间 ' + beijingClock();
 
+    // 暂停状态
+    pauseBtn.textContent = state.paused ? '▶ 继续' : '⏸ 暂停';
+    pauseBtn.className = 'pause-btn' + (state.paused ? ' paused' : '');
+
     // 状态文字
-    statusText.textContent = h.txt;
-    statusText.className = 'status-text' + (h.level === 'warn' ? ' warn' : h.level === 'bad' ? ' bad' : '');
+    if (state.paused) {
+      statusText.textContent = '⏸ 已暂停，植物在休息…';
+      statusText.className = 'status-text';
+    } else {
+      statusText.textContent = h.txt;
+      statusText.className = 'status-text' + (h.level === 'warn' ? ' warn' : h.level === 'bad' ? ' bad' : '');
+    }
 
     // 植物图
     if (stage !== lastStage || h.cls !== lastSick) {
@@ -468,20 +490,29 @@
 
   // ---------- 交互 ----------
   document.getElementById('waterBtn').addEventListener('click', function () {
-    state.water = Math.min(100, state.water + 22);
+    if (state.paused) { showEvent({ ic: '⏸', txt: '已暂停，点「继续」恢复', k: 'info' }); return; }
+    state.water = Math.min(100, state.water + 40);
     rain('💧', 7);
     vibrate(15);
     save(); render();
   });
   document.getElementById('foodBtn').addEventListener('click', function () {
-    state.nutrients = Math.min(100, state.nutrients + 18);
+    if (state.paused) { showEvent({ ic: '⏸', txt: '已暂停，点「继续」恢复', k: 'info' }); return; }
+    state.nutrients = Math.min(100, state.nutrients + 35);
     rain('🌰', 5);
     vibrate(15);
     save(); render();
   });
+
+  pauseBtn.addEventListener('click', function () {
+    state.paused = !state.paused;
+    state.last = Date.now();
+    save(); render();
+    vibrate(15);
+  });
   document.getElementById('resetBtn').addEventListener('click', function () {
     if (confirm('确定要重新种一株吗？当前植物会被清空。')) {
-      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now() };
+      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false };
       nameInput.value = '';
       lastStage = -1; lastSick = '';
       save(); render();
@@ -501,6 +532,7 @@
 
   // ---------- 主循环 ----------
   setInterval(function () {
+    if (state.paused) { render(); return; }
     applyTick(1);
     state.last = Date.now();
     save();
@@ -510,6 +542,7 @@
   // 随机事件：每 30 秒有 50% 概率发生
   setInterval(function () {
     if (document.hidden) return;
+    if (state.paused) return;
     var w = document.getElementById('welcome');
     if (!w.classList.contains('hidden')) return;
     if (Math.random() < 0.5) triggerRandomEvent();
@@ -519,7 +552,7 @@
     if (document.hidden) {
       state.last = Date.now(); save();
     } else {
-      applyTick((Date.now() - state.last) / 1000);
+      if (!state.paused) applyTick((Date.now() - state.last) / 1000);
       state.last = Date.now(); save(); render();
     }
   });
