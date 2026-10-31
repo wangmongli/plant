@@ -35,6 +35,15 @@
   .header { text-align: center; padding-top: calc(16px + env(safe-area-inset-top)); }
   .header h1 { font-size: clamp(22px, 6vw, 34px); letter-spacing: 2px; color: #2f6b2f; }
   .header .sub { font-size: 13px; color: #5f8a5f; margin-top: 4px; }
+  .clock { font-size: 12px; color: #6a8a6a; margin-top: 5px; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+  .name-row { margin-top: 10px; }
+  .name-input {
+    background: rgba(255,255,255,.65); border: 1.5px solid rgba(80,160,80,.45);
+    border-radius: 999px; padding: 8px 18px; font-size: 15px; text-align: center; color: #2f6b2f;
+    outline: none; width: min(200px, 60vw); font-weight: 700;
+  }
+  .name-input::placeholder { color: #8aaa8a; font-weight: 500; }
+  .name-input:focus { border-color: #43a047; background: #fff; }
 
   /* 植物卡片 */
   .stage-badge {
@@ -117,6 +126,11 @@
     <div class="header">
       <h1>🌱 云端小花园</h1>
       <div class="sub">浇水施肥，看着它一天天长大</div>
+      <div class="clock" id="clock">--</div>
+    </div>
+
+    <div class="name-row">
+      <input class="name-input" id="nameInput" type="text" maxlength="12" placeholder="🌿 给你的植物起个名字">
     </div>
 
     <div class="stage-badge" id="stageBadge">种子</div>
@@ -201,6 +215,8 @@
   var foodVal = document.getElementById('foodVal');
   var growVal = document.getElementById('growVal');
   var dayVal = document.getElementById('dayVal');
+  var clock = document.getElementById('clock');
+  var nameInput = document.getElementById('nameInput');
   var fx = document.getElementById('fx');
 
   var lastStage = -1, lastSick = '';
@@ -210,12 +226,31 @@
     var d = null;
     try { d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {}
     if (d && typeof d.water === 'number' && typeof d.growth === 'number') {
+      if (d.plantedAt == null) d.plantedAt = Date.now();
+      if (typeof d.name !== 'string') d.name = '';
       return d;
     }
-    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now() };
+    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now() };
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---------- 北京时间 ----------
+  function beijingClock() {
+    try {
+      return new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai', hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      }).format(new Date());
+    } catch (e) {
+      var d = new Date(Date.now() + 8 * 3600 * 1000);
+      return d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+  }
+  function beijingDayNumber(ts) {
+    return Math.floor((ts + 8 * 3600 * 1000) / 86400000);
   }
 
   // ---------- 逻辑 ----------
@@ -257,8 +292,11 @@
     var stage = stageOf(g);
     var h = health();
 
-    // 阶段名
-    stageBadge.textContent = STAGE_NAMES[stage];
+    // 阶段名（含植物名字）
+    stageBadge.textContent = (state.name ? state.name + ' · ' : '') + STAGE_NAMES[stage];
+
+    // 北京时间
+    clock.textContent = '北京时间 ' + beijingClock();
 
     // 状态文字
     statusText.textContent = h.txt;
@@ -279,7 +317,7 @@
     waterVal.textContent = Math.round(state.water) + '%';
     foodVal.textContent = Math.round(state.nutrients) + '%';
     growVal.textContent = Math.round(g) + '%';
-    dayVal.textContent = 1 + Math.floor(state.seconds / 120);
+    dayVal.textContent = beijingDayNumber(Date.now()) - beijingDayNumber(state.plantedAt) + 1;
   }
 
   // ---------- SVG 绘制 ----------
@@ -376,13 +414,20 @@
   });
   document.getElementById('resetBtn').addEventListener('click', function () {
     if (confirm('确定要重新种一株吗？当前植物会被清空。')) {
-      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now() };
+      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now() };
+      nameInput.value = '';
       lastStage = -1; lastSick = '';
       save(); render();
     }
   });
   document.getElementById('welcomeBtn').addEventListener('click', function () {
     document.getElementById('welcome').classList.add('hidden');
+  });
+
+  nameInput.value = state.name;
+  nameInput.addEventListener('input', function () {
+    state.name = (nameInput.value || '').trim();
+    save(); render();
   });
 
   function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 15); } catch (e) {} }
