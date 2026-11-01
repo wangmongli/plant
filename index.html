@@ -66,6 +66,7 @@
   #plantSvg.sick { filter: sepia(.5) saturate(.55) brightness(.94); }
   #plantSvg.wilt { filter: sepia(.6) saturate(.45) brightness(.92); animation: wiltSway 4s ease-in-out infinite; }
   #plantSvg.burn { filter: sepia(.4) saturate(.65) hue-rotate(-12deg); }
+  #plantSvg.dead { filter: grayscale(.85) sepia(.35) brightness(.7); }
   @keyframes wiltSway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
   .sway { animation: sway 5s ease-in-out infinite; transform-origin: bottom center; }
   @keyframes sway { 0%,100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
@@ -208,7 +209,8 @@
         ・点「🌰 施肥」补充养分<br>
         ・水分养分合适，它就会慢慢长大<br>
         ・离开后时间也会继续走，记得回来照顾它<br>
-        ・缺水会枯萎，水太多会烂根，施肥过量会烧苗哦
+        ・缺水会枯萎，<b>连续缺水 7 天植物会枯死哦</b><br>
+        ・水太多会烂根，施肥过量会烧苗
       </p>
       <button id="welcomeBtn">开始种植</button>
     </div>
@@ -225,7 +227,7 @@
   var WATER_DECAY = 100 / 86400;
   var FOOD_DECAY = 100 / 86400;
   var GROW_RATE = 100 / (40 * 86400); // 生长周期约 40 天（连续适宜生长）
-  var OFFLINE_CAP = 48 * 3600; // 离线最多补 48 小时
+  var OFFLINE_CAP = 60 * 86400; // 离线最多补 60 天
 
   var state = load();
   if (!state.paused) applyTick((Date.now() - state.last) / 1000);
@@ -258,9 +260,11 @@
       if (d.plantedAt == null) d.plantedAt = Date.now();
       if (typeof d.name !== 'string') d.name = '';
       if (typeof d.paused !== 'boolean') d.paused = false;
+      if (typeof d.drySeconds !== 'number') d.drySeconds = 0;
+      if (typeof d.dead !== 'boolean') d.dead = false;
       return d;
     }
-    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false };
+    return { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false, drySeconds: 0, dead: false };
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
@@ -288,13 +292,40 @@
     return state.water >= 20 && state.water <= 85 && state.nutrients >= 12 && state.nutrients <= 80;
   }
 
+  var DRY_THRESHOLD = 8;              // 水分低于此值算「缺水」
+  var DRY_DEATH_SECONDS = 7 * 86400;  // 连续缺水 7 天则枯死
+
   function applyTick(sec) {
     if (!sec || sec < 0) return;
     sec = Math.min(sec, OFFLINE_CAP);
-    state.water = Math.max(0, state.water - sec * WATER_DECAY);
-    state.nutrients = Math.max(0, state.nutrients - sec * FOOD_DECAY);
-    if (ideal()) {
-      state.growth = Math.min(100, state.growth + sec * GROW_RATE);
+    var remain = sec;
+    var guard = 0;
+    while (remain > 0.001 && guard < 200000) {
+      var step = Math.min(remain, 60);
+      var prevWater = state.water;
+
+      state.water = Math.max(0, state.water - step * WATER_DECAY);
+      state.nutrients = Math.max(0, state.nutrients - step * FOOD_DECAY);
+      if (!state.dead && ideal()) {
+        state.growth = Math.min(100, state.growth + step * GROW_RATE);
+      }
+
+      // 缺水计时：水分低于阈值时累加，浇水恢复后清零
+      if (prevWater >= DRY_THRESHOLD && state.water < DRY_THRESHOLD) {
+        var tCross = (prevWater - DRY_THRESHOLD) / WATER_DECAY;
+        state.drySeconds = (state.drySeconds || 0) + Math.max(0, step - tCross);
+      } else if (state.water < DRY_THRESHOLD) {
+        state.drySeconds = (state.drySeconds || 0) + step;
+      } else {
+        state.drySeconds = 0;
+      }
+
+      if (!state.dead && (state.drySeconds || 0) >= DRY_DEATH_SECONDS) {
+        state.dead = true;
+      }
+
+      remain -= step;
+      guard++;
     }
     state.seconds += sec;
   }
@@ -307,7 +338,12 @@
   }
 
   function health() {
-    if (state.water < 8) return { cls: 'wilt', txt: '缺水枯萎了，快浇水！', level: 'bad' };
+    if (state.dead) return { cls: 'dead', txt: '🥀 植物枯死了', level: 'bad' };
+    if (state.water < 8) {
+      var left = Math.max(0, DRY_DEATH_SECONDS - (state.drySeconds || 0));
+      var msg = left > 0 ? ('缺水枯萎了，约 ' + Math.ceil(left / 86400) + ' 天后枯死，快浇水！') : '快枯死了，快浇水！';
+      return { cls: 'wilt', txt: msg, level: 'bad' };
+    }
     if (state.water > 92) return { cls: 'sick', txt: '水太多，快烂根了！', level: 'warn' };
     if (state.nutrients > 88) return { cls: 'burn', txt: '肥料过量，烧苗了！', level: 'warn' };
     if (state.nutrients < 5) return { cls: 'sick', txt: '缺养分，施点肥吧', level: 'warn' };
@@ -333,7 +369,10 @@
     pauseBtn.className = 'pause-btn' + (state.paused ? ' paused' : '');
 
     // 状态文字
-    if (state.paused) {
+    if (state.dead) {
+      statusText.textContent = '🥀 植物已经枯死了，点「重新种一株」吧';
+      statusText.className = 'status-text bad';
+    } else if (state.paused) {
       statusText.textContent = '⏸ 已暂停，植物在休息…';
       statusText.className = 'status-text';
     } else {
@@ -490,6 +529,7 @@
 
   // ---------- 交互 ----------
   document.getElementById('waterBtn').addEventListener('click', function () {
+    if (state.dead) { showEvent({ ic: '🥀', txt: '植物已枯死，重新种一株吧', k: 'bad' }); return; }
     if (state.paused) { showEvent({ ic: '⏸', txt: '已暂停，点「继续」恢复', k: 'info' }); return; }
     state.water = Math.min(100, state.water + 40);
     rain('💧', 7);
@@ -497,6 +537,7 @@
     save(); render();
   });
   document.getElementById('foodBtn').addEventListener('click', function () {
+    if (state.dead) { showEvent({ ic: '🥀', txt: '植物已枯死，重新种一株吧', k: 'bad' }); return; }
     if (state.paused) { showEvent({ ic: '⏸', txt: '已暂停，点「继续」恢复', k: 'info' }); return; }
     state.nutrients = Math.min(100, state.nutrients + 35);
     rain('🌰', 5);
@@ -512,7 +553,7 @@
   });
   document.getElementById('resetBtn').addEventListener('click', function () {
     if (confirm('确定要重新种一株吗？当前植物会被清空。')) {
-      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false };
+      state = { water: 55, nutrients: 35, growth: 2, seconds: 0, last: Date.now(), name: '', plantedAt: Date.now(), paused: false, drySeconds: 0, dead: false };
       nameInput.value = '';
       lastStage = -1; lastSick = '';
       save(); render();
