@@ -224,7 +224,7 @@
   // 每秒变化速率（满值约 24 小时）
   var WATER_DECAY = 100 / 86400;
   var FOOD_DECAY = 100 / 86400;
-  var GROW_RATE = 100 / 86400;
+  var GROW_RATE = 100 / (40 * 86400); // 生长周期约 40 天（连续适宜生长）
   var OFFLINE_CAP = 48 * 3600; // 离线最多补 48 小时
 
   var state = load();
